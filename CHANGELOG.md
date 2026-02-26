@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.4] - 2025-02-26
+
+### Added
+
+- **Documentation suite**
+  - **docs/README.md**: Documentation index and quick links to SMCP, Cursor CLI, MCP.
+  - **docs/PREREQUISITES.md**: SMCP (repo, role, why required), Cursor CLI (non-interactive mode, install), MCP (protocol, how it fits).
+  - **docs/GETTING_STARTED.md**: Step-by-step SMCP setup, Cursor CLI install/verify, plugin install, verification, first use.
+  - **docs/CONFIGURATION.md**: Environment variables, tool arguments, precedence, optional overrides, session directory layout.
+  - **docs/TOOLS_REFERENCE.md**: Full reference for `cursor_cli__start`, `cursor_cli__status`, `cursor_cli__output` (parameters, behavior, example results).
+  - **docs/SANCTUM_TASKS.md**: Heartbeat-queue integration and intended usage.
+  - **docs/TROUBLESHOOTING.md**: Plugin not discovered, command not found, trust prompt, status/output issues, session files.
+- **README.md**: Comprehensive rewrite — what this is, prerequisites (SMCP, Cursor CLI, MCP) with conspicuous links, quick start, documentation table, license.
+
+---
+
 ## [0.0.3] - 2025-02-26
 
 ### Added
@@ -69,6 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+[0.0.4]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.4
 [0.0.3]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.3
 [0.0.2]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.2
 [0.0.1]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.1
