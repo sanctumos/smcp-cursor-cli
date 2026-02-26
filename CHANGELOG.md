@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.3] - 2025-02-26
+
+### Added
+
+- **Test suite** (unit, integration, e2e) with ≥80% coverage.
+  - **Unit** (`tests/unit/`): `get_plugin_description`, `_resolve_*`, `run_start` (mocked and real fake agent), `run_status`, `run_output`, `main()` (describe, no-command, start, status, output), exception paths (Popen failure, OSError on output read, invalid exitcode file).
+  - **Integration** (`tests/integration/`): CLI as subprocess (`python -m plugins.cursor_cli`), `--describe`, start with nonexistent cmd, full start/status/output with fake agent, status/output error cases.
+  - **E2E** (`tests/e2e/`): Full flow start → status (until completed) → output; output readable while run is still running.
+- **requirements-test.txt**: pytest, pytest-cov.
+- **pytest.ini**: testpaths, coverage source/omit/fail_under=80.
+- **tests/README.md**: How to run tests and coverage.
+- **plugins/__init__.py**: Package marker for imports.
+
+---
+
 ## [0.0.2] - 2025-02-26
 
 ### Added
@@ -54,5 +69,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+[0.0.3]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.3
 [0.0.2]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.2
 [0.0.1]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.1
