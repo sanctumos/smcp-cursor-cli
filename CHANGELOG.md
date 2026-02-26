@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.2] - 2025-02-26
+
+### Added
+
+- **plugins/cursor_cli/cli.py**: Full SMCP plugin implementation.
+  - `--describe`: Returns plugin spec with commands start, status, output and parameter schemas.
+  - **start**: Launches Cursor CLI with `agent -p "<prompt>" --output-format text --trust` in background; creates session dir, writes PID and output file; returns `agent_uid`. Config: prompt (required), workspace, cmd, sessions_dir (arg or env).
+  - **status**: Takes `agent_uid` (and optional sessions_dir). Returns `run_status`: `running` | `completed` | `failed`; writes exit code to `<agent_uid>.exitcode` when process ends.
+  - **output**: Takes `agent_uid`; returns contents of `<agent_uid>.txt`.
+- Config resolution: argument overrides env var; defaults from `_overrides.get_default_*`.
+- **plugins/cursor_cli/README.md**: Usage and configuration for the plugin.
+
+### Changed
+
+- Start command adds `--trust` so non-interactive runs do not block on workspace trust prompt.
+
+---
+
 ## [0.0.1] - 2025-02-26
 
 ### Added (planning)
@@ -36,4 +54,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+[0.0.2]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.2
 [0.0.1]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.1
