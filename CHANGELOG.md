@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.0] - 2025-02-25
+
+### Added
+
+- **Sanctum Tasks (heartbeat coordination)** as an explicit prerequisite.
+  - **README.md**: New prerequisite §4 — heartbeat coordination with Sanctum Tasks; repo link, role (heartbeat queue), why required (MCP timeouts vs long Cursor runs); doc index table updated.
+  - **docs/PREREQUISITES.md**: New section 4 — Sanctum Tasks (what it is, where to get it, why required); summary table updated.
+  - **docs/README.md**: Prerequisites row and quick links updated to include Sanctum Tasks.
+
+---
+
 ## [0.0.4] - 2025-02-26
 
 ### Added
@@ -85,6 +96,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+[0.1.0]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.1.0
 [0.0.4]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.4
 [0.0.3]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.3
 [0.0.2]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.2

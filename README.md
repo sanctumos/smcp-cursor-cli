@@ -54,7 +54,15 @@ MCP is the protocol that lets AI clients (e.g. Letta, Cursor IDE) discover and c
 - **Context**: SMCP is an MCP server; this plugin adds **tools** to that server. Clients connect to SMCP (SSE or STDIO), call `tools/list`, and see `cursor_cli__start`, `cursor_cli__status`, `cursor_cli__output`. They then call `tools/call` with the tool name and arguments.
 - **No extra setup**: If you already run SMCP and connect your client to it, MCP is in use. This plugin simply adds more tools to that server.
 
-For more detail on how SMCP, Cursor CLI, and MCP fit together, see [Prerequisites](docs/PREREQUISITES.md).
+### 4. Heartbeat coordination with Sanctum Tasks
+
+**This plugin is designed to be used with the heartbeat functions of [Sanctum Tasks](https://github.com/sanctumos/sanctum-tasks)** (beta, Sanctum Suite). Sanctum Tasks provides a **heartbeat queue**: tasks that run on a schedule so the main agent does not block on long Cursor CLI runs.
+
+- **Repository**: [github.com/sanctumos/sanctum-tasks](https://github.com/sanctumos/sanctum-tasks) (beta; repo may be private).
+- **Role**: After the agent calls `cursor_cli__start` and gets an `agent_uid`, it creates a **Sanctum Tasks task** that runs on the heartbeat queue. That task periodically calls `cursor_cli__status` for that `agent_uid` until the run is `completed` or `failed`, then calls `cursor_cli__output` and stores or returns the result. The main agent can then use that output without having blocked on the Cursor CLI run.
+- **Why it’s required for the intended pattern**: MCP tool calls typically time out (e.g. 300s). Cursor agent runs can be much longer. Heartbeat coordination lets polling happen in the background; without it, you would need another way to poll `cursor_cli__status` and retrieve output without blocking the main agent.
+
+For more detail on how SMCP, Cursor CLI, MCP, and Sanctum Tasks fit together, see [Prerequisites](docs/PREREQUISITES.md).
 
 ---
 
@@ -79,7 +87,7 @@ Full documentation is in the **[docs/](docs/README.md)** directory. Summary:
 
 | Document | Description |
 |----------|-------------|
-| [**Prerequisites**](docs/PREREQUISITES.md) | **SMCP**, **Cursor CLI**, and **MCP** — what they are, where to get them, and why they’re required |
+| [**Prerequisites**](docs/PREREQUISITES.md) | **SMCP**, **Cursor CLI**, **MCP**, and **Sanctum Tasks** (heartbeat) — what they are, where to get them, and why they’re required |
 | [**Getting started**](docs/GETTING_STARTED.md) | Step-by-step setup: SMCP, Cursor CLI, installing the plugin |
 | [**Configuration**](docs/CONFIGURATION.md) | Environment variables, tool arguments, and optional overrides |
 | [**Tools reference**](docs/TOOLS_REFERENCE.md) | `cursor_cli__start`, `cursor_cli__status`, `cursor_cli__output` — parameters and examples |

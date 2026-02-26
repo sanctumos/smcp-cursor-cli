@@ -8,7 +8,7 @@ Documentation for **smcp-cursor-cli**: setup, configuration, tools, and integrat
 
 | Document | Description |
 |----------|-------------|
-| [**PREREQUISITES**](PREREQUISITES.md) | **SMCP**, **Cursor CLI**, and **MCP** — what they are, where to get them, and why they’re required. Start here if you’re new to the stack. |
+| [**PREREQUISITES**](PREREQUISITES.md) | **SMCP**, **Cursor CLI**, **MCP**, and **Sanctum Tasks** (heartbeat) — what they are, where to get them, and why they’re required. Start here if you’re new to the stack. |
 | [**GETTING_STARTED**](GETTING_STARTED.md) | Step-by-step: install and run SMCP, install Cursor CLI, install this plugin, verify tools, and first use. |
 
 ---
@@ -45,3 +45,4 @@ Documentation for **smcp-cursor-cli**: setup, configuration, tools, and integrat
 - **SMCP (MCP server)**: [github.com/sanctumos/smcp](https://github.com/sanctumos/smcp)
 - **Cursor CLI**: [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview)
 - **MCP**: [modelcontextprotocol.io](https://modelcontextprotocol.io/)
+- **Sanctum Tasks (heartbeat)**: [github.com/sanctumos/sanctum-tasks](https://github.com/sanctumos/sanctum-tasks)

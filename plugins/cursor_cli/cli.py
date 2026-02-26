@@ -27,7 +27,7 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli",
-            "version": "0.0.1",
+            "version": "0.1.0",
             "description": "Run Cursor CLI in non-interactive mode; start, poll status, retrieve output. For Sanctum Tasks heartbeat.",
         },
         "commands": [

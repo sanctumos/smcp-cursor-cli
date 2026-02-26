@@ -11,7 +11,7 @@ def test_get_plugin_description_structure():
     assert "plugin" in desc
     assert "commands" in desc
     assert desc["plugin"]["name"] == "cursor_cli"
-    assert desc["plugin"]["version"] == "0.0.1"
+    assert desc["plugin"]["version"] == "0.1.0"
     assert isinstance(desc["commands"], list)
     assert len(desc["commands"]) == 3
 

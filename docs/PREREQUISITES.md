@@ -1,6 +1,6 @@
 # Prerequisites
 
-This plugin depends on **SMCP** (the MCP server), **Cursor CLI** (non-interactive mode), and **MCP** (the protocol). This document explains what each is and how to satisfy the prerequisites.
+This plugin depends on **SMCP** (the MCP server), **Cursor CLI** (non-interactive mode), **MCP** (the protocol), and **Sanctum Tasks** (heartbeat coordination). This document explains what each is and how to satisfy the prerequisites.
 
 ---
 
@@ -92,6 +92,34 @@ For more on the protocol, see [modelcontextprotocol.io](https://modelcontextprot
 
 ---
 
+## 4. Sanctum Tasks — heartbeat coordination
+
+### What it is
+
+**Sanctum Tasks** is a beta product in the Sanctum Suite that provides **heartbeat coordination**: a queue of tasks that run on a schedule (heartbeat). For this plugin, the intended pattern is:
+
+1. The main agent calls **cursor_cli__start** and gets an **agent_uid**.
+2. The main agent creates a **Sanctum Tasks task** that runs on the **heartbeat queue**.
+3. That task periodically calls **cursor_cli__status** with the `agent_uid` until the run is `completed` or `failed`.
+4. When done, the task calls **cursor_cli__output** and stores or returns the result for the main agent.
+
+The main agent does not block on the Cursor CLI run; the heartbeat task does the polling in the background.
+
+### Where to get it
+
+- **Repository**: [github.com/sanctumos/sanctum-tasks](https://github.com/sanctumos/sanctum-tasks)
+- **Status**: Beta; the repo may be private. See the Sanctum Suite or your deployment for access and setup.
+- **Documentation**: Heartbeat API and task creation are documented in the Sanctum Tasks repository.
+
+### Why it’s required for the intended pattern
+
+- **MCP timeouts**: SMCP typically times out long tool calls (e.g. 300 seconds). A Cursor agent run can be much longer. You cannot block the main agent on “wait until Cursor finishes” inside a single tool call.
+- **Heartbeat coordination** lets you offload polling to a scheduled task. Without Sanctum Tasks (or another heartbeat/scheduler mechanism), you would need to implement your own way to poll `cursor_cli__status` and call `cursor_cli__output` without blocking the main agent.
+
+If you have an alternative scheduler or heartbeat system that can call MCP tools on a schedule, you can use that instead; the plugin does not depend on Sanctum Tasks at runtime. The **design** and **documentation** assume Sanctum Tasks as the heartbeat layer.
+
+---
+
 ## Summary
 
 | Prerequisite | Purpose | Where |
@@ -99,5 +127,6 @@ For more on the protocol, see [modelcontextprotocol.io](https://modelcontextprot
 | **SMCP** | MCP server that loads and runs this plugin | [github.com/sanctumos/smcp](https://github.com/sanctumos/smcp) |
 | **Cursor CLI** | Provides `agent -p "..."` in non-interactive mode | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) |
 | **MCP** | Protocol used by SMCP and your client | Used automatically when you connect a client to SMCP |
+| **Sanctum Tasks** | Heartbeat queue to poll status and retrieve output without blocking the main agent | [github.com/sanctumos/sanctum-tasks](https://github.com/sanctumos/sanctum-tasks) (beta) |
 
 Next: [Getting started](GETTING_STARTED.md) for step-by-step setup.
