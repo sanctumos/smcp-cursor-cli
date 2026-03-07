@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] - 2026-03-07
+
+### Added
+
+- **cursor_cli_docker** — Docker-sandboxed variant of the Cursor CLI plugin.
+  - Same tool contract as `cursor_cli`: `start`, `status`, `output` (plus `build` for the sandbox image).
+  - Every agent run executes inside an ephemeral Docker container with root access in-container; host is isolated.
+  - Mounts workspace (rw), sessions dir, host Cursor CLI binary + auth (`~/.cursor`, `~/.config/cursor`), optional git config.
+  - Dockerfile (Ubuntu 24.04, Node 20, Python 3, dev tools), `_overrides.py` for image/path config, README.
+
+---
+
 ## [0.1.0] - 2025-02-25
 
 ### Added
@@ -96,6 +108,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+[0.2.0]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.1.0
 [0.0.4]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.4
 [0.0.3]: https://github.com/sanctumos/smcp-cursor-cli/releases/tag/v0.0.3
