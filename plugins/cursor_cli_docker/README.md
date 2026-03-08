@@ -23,6 +23,7 @@ Everything from the base `cursor_cli` plugin, plus:
 
 - **Docker** installed and the SMCP host user able to run `docker` commands.
 - The **sandbox image** built (see Quick Start below).
+- **If the agent runs via Letta:** the SMCP process that Letta spawns must have Docker socket access. By default Letta runs `python3 smcp_stdio.py` directly, which often does not have the `docker` group. Use a wrapper script and configure Letta’s MCP server to run it — see [Letta + Docker access](../../docs/LETTA_DOCKER_ACCESS.md).
 
 ---
 

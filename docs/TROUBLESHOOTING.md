@@ -70,6 +70,16 @@ Session files (`.txt`, `.pid`, `.exitcode`) are kept in `sessions_dir` (default 
 
 ---
 
+## cursor_cli_docker: permission denied on Docker socket
+
+**Symptom:** `cursor_cli_docker__build` or `cursor_cli_docker__start` returns “permission denied while trying to connect to the docker API at unix:///var/run/docker.sock”.
+
+**Cause:** When the agent is used through **Letta**, Letta spawns the SMCP process. That process often does not run with the `docker` group, so it cannot access the Docker socket.
+
+**Fix:** Run SMCP via a wrapper that has Docker access and point Letta’s MCP server config at that wrapper. Full steps (wrapper script, Letta API config, attaching tools): **[Letta + Docker access](LETTA_DOCKER_ACCESS.md)**.
+
+---
+
 ## More help
 
 - **SMCP**: [github.com/sanctumos/smcp](https://github.com/sanctumos/smcp) — server logs, plugin discovery, and run behavior.

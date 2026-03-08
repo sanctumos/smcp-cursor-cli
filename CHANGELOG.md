@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Letta + Docker access** — Documentation for using cursor_cli_docker when the agent runs via Letta.
+  - **docs/LETTA_DOCKER_ACCESS.md**: Why “permission denied” on Docker socket occurs (Letta spawns SMCP without docker group), fix via wrapper script (`sg docker -c "python3 smcp_stdio.py"`), PATCH Letta MCP server config to run the wrapper, and attaching tools to the agent.
+  - **docs/run-with-docker.sh.example**: Example wrapper script to copy into the SMCP server directory.
+  - **plugins/cursor_cli_docker/README.md**: Prerequisites now mention Letta and link to LETTA_DOCKER_ACCESS.md.
+  - **docs/TROUBLESHOOTING.md**: New section “cursor_cli_docker: permission denied on Docker socket” with link to LETTA_DOCKER_ACCESS.md.
+  - **docs/README.md**: Doc index updated with LETTA_DOCKER_ACCESS.
+
+---
+
 ## [0.2.0] - 2026-03-07
 
 ### Added

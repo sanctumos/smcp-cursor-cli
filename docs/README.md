@@ -29,6 +29,15 @@ Documentation for **smcp-cursor-cli**: setup, configuration, tools, and integrat
 |----------|-------------|
 | [**CURSOR_CLI_OPERATIONAL_MODEL**](CURSOR_CLI_OPERATIONAL_MODEL.md) | Operational model: non-interactive mode, agent UID, poll-and-retrieve, and configuration rules. |
 | [**TROUBLESHOOTING**](TROUBLESHOOTING.md) | Common issues: plugin not discovered, command not found, trust prompt, status/output problems, and session files. |
+| [**LETTA_DOCKER_ACCESS**](LETTA_DOCKER_ACCESS.md) | **Letta + cursor_cli_docker:** Fix “permission denied” on Docker socket when the agent runs via Letta — wrapper script, MCP server config, and attaching tools. |
+
+---
+
+## Planning
+
+| Document | Description |
+|----------|-------------|
+| [**PROJECT_PLAN_DOCKER_DEFAULT**](PROJECT_PLAN_DOCKER_DEFAULT.md) | **Project plan:** Docker-by-default execution — run Cursor CLI inside an Ubuntu container by default; host execution as explicit opt-in. For implementation in a Docker-capable environment. |
 
 ---
 

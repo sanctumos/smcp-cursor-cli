@@ -1,0 +1,10 @@
+#!/bin/bash
+# Example wrapper so SMCP runs with docker group when invoked by Letta (stdio).
+# Copy this into your SMCP server directory (same host as Letta), make executable,
+# then configure Letta's MCP server to run this script instead of python3 smcp_stdio.py.
+# See docs/LETTA_DOCKER_ACCESS.md for full steps.
+set -e
+cd "$(dirname "$0")"
+ENV_FILE="../env.letta"
+[ -f "$ENV_FILE" ] && set -a && . "$ENV_FILE" && set +a
+exec sg docker -c "exec python3 smcp_stdio.py"
