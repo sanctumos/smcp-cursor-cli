@@ -143,6 +143,17 @@ def get_plugin_description() -> Dict[str, Any]:
                      "description": "Sessions directory (optional)", "required": False, "default": None},
                 ],
             },
+            {
+                "name": "delay",
+                "description": (
+                    "Sleep for a given number of seconds. Use when you do not want to end the turn yet "
+                    "and want to wait before checking task status (e.g. after start, delay then status)."
+                ),
+                "parameters": [
+                    {"name": "seconds", "type": "integer",
+                     "description": "Number of seconds to wait (1–3600)", "required": True, "default": None},
+                ],
+            },
         ],
     }
 
