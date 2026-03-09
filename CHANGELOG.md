@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-03-09
+
+### Fixed
+
+- **cursor_cli_docker**: Container runs no longer fail with `FileNotFoundError: 'agent'`. The plugin now passes the **full host path** to the Cursor CLI binary into the runner so the container can execute it; the container's `PATH` does not include the host binary directory.
+- **cursor_cli_docker**: Cursor agent inside the container can now run shell commands. The runner invokes the CLI with `--sandbox disabled` and `--yolo` so no commands are blocked; the container itself provides isolation.
+
+### Changed
+
+- **cursor_cli_docker**: Runner script now invokes Cursor CLI with `--trust --sandbox disabled --yolo` for headless, unrestricted execution inside the container.
+- **docs/LETTA_DOCKER_ACCESS.md**: Added "Auth when SMCP runs as a different user" — document `CURSOR_CONFIG_HOST_DIR` and `CURSOR_XDG_CONFIG_DIR` so containers mount the correct user's auth.
+- **plugins/cursor_cli_docker/README.md**: How it works updated (full path to binary, runner flags); config table includes `CURSOR_XDG_CONFIG_DIR`.
+
 ### Added
 
 - **Letta + Docker access** — Documentation for using cursor_cli_docker when the agent runs via Letta.

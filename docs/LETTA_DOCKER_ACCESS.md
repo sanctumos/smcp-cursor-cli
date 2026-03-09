@@ -102,7 +102,30 @@ Tools to attach for full Docker + delay support:
 - `cursor_cli_docker__start`
 - `cursor_cli_docker__status`
 - `cursor_cli_docker__output`
+- `cursor_cli_docker__stop`
 - `delay__sleep`
+
+---
+
+## Cursor authentication (no output / exit 1)
+
+If the Cursor CLI is **not authenticated on the host**, agent runs can exit with code 1 and **produce no stdout/stderr**. The container mounts the host's `~/.cursor` and `~/.config/cursor`; if those lack valid auth, the Cursor CLI inside the container has nothing to use.
+
+**Fix:** On the host where SMCP runs, log in once: run `agent` interactively (e.g. in a terminal) and complete any login flow. After that, the container's mounted auth dirs will have credentials and runs can produce output. The plugin also appends a hint to **output** when the run failed and no output was captured, so the agent at least sees that auth may be the cause.
+
+### Auth when SMCP runs as a different user
+
+If SMCP is invoked by Letta and runs as a **different user** than the one who ran `agent login` (e.g. Letta runs as `letta` but you logged in as `rizzn`), the plugin will mount that process user's `~/.cursor` and `~/.config/cursor` — which are empty. Set these in the env that the wrapper sources (e.g. in `env.letta`) so the container mounts the correct auth dirs:
+
+- **`CURSOR_CONFIG_HOST_DIR`** — Host path to the **logged-in** user's `.cursor` dir (e.g. `/home/rizzn/.cursor`).
+- **`CURSOR_XDG_CONFIG_DIR`** — Host path to that user's `.config/cursor` (e.g. `/home/rizzn/.config/cursor`).
+
+Optional if the binary is only in that user's home:
+
+- **`CURSOR_CLI_HOST_PATH`** — Full path to the `agent` binary (e.g. `/home/rizzn/.local/bin/agent`).
+- **`CURSOR_AGENT_HOST_DIR`** — Path to that user's `.local/share/cursor-agent` (e.g. `/home/rizzn/.local/share/cursor-agent`).
+
+Then (re)start or reconnect the MCP server so the new process picks up the env; the next container run will have valid auth.
 
 ---
 
@@ -112,3 +135,4 @@ Tools to attach for full Docker + delay support:
 |--------|----------------------------------------------------------------------------------------------------------------------------------|
 | Fix    | Run SMCP via a wrapper that does `sg docker -c "python3 smcp_stdio.py"` and set Letta’s MCP server **command** to that wrapper, **args** to `[]`. |
 | Then   | Refresh MCP tools and attach `cursor_cli_docker__*` and `delay__sleep` to the agent so the agent can build the image and run containers. |
+| No output | If runs exit with code 1 and empty output, ensure Cursor is authenticated on the host (run `agent` once interactively). If SMCP runs as a different user, set `CURSOR_CONFIG_HOST_DIR` and `CURSOR_XDG_CONFIG_DIR` in the wrapper env (see "Auth when SMCP runs as a different user" above). Use `cursor_cli_docker__stop` to stop/remove a container. |

@@ -59,7 +59,7 @@ prompt = (base / f"{uid}.prompt").read_text(encoding="utf-8")
 
 with open(base / f"{uid}.txt", "w", encoding="utf-8") as out:
     proc = subprocess.run(
-        [cmd, "-p", prompt, "--output-format", "text", "--trust"],
+        [cmd, "-p", prompt, "--output-format", "text", "--trust", "--sandbox", "disabled", "--yolo"],
         stdin=subprocess.DEVNULL,
         stdout=out,
         stderr=subprocess.STDOUT,
@@ -86,7 +86,7 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli_docker",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "description": (
                 "Run Cursor CLI in non-interactive mode inside a Docker container. "
                 "Provides start, poll status, retrieve output — sandboxed variant "
@@ -144,14 +144,13 @@ def get_plugin_description() -> Dict[str, Any]:
                 ],
             },
             {
-                "name": "delay",
-                "description": (
-                    "Sleep for a given number of seconds. Use when you do not want to end the turn yet "
-                    "and want to wait before checking task status (e.g. after start, delay then status)."
-                ),
+                "name": "stop",
+                "description": "Stop and remove a running container for the given agent_uid. Use to terminate a run or clean up.",
                 "parameters": [
-                    {"name": "seconds", "type": "integer",
-                     "description": "Number of seconds to wait (1–3600)", "required": True, "default": None},
+                    {"name": "agent_uid", "type": "string",
+                     "description": "Agent UID returned from start", "required": True, "default": None},
+                    {"name": "sessions_dir", "type": "string",
+                     "description": "Sessions directory (optional)", "required": False, "default": None},
                 ],
             },
         ],
@@ -309,12 +308,15 @@ def run_start(
     if os.path.isfile(git_creds):
         volume_args += ["-v", f"{git_creds}:/root/.git-credentials:ro"]
 
+    # Pass full path to agent binary so runner finds it (container PATH doesn't have host bin)
+    cursor_bin_path = get_default_cursor_host_bin()
+
     argv = [
         "docker", "run", "-d",
         "--name", container_name,
         *volume_args,
         image,
-        "python3", "/sessions/_runner.py", agent_uid, cmd_name,
+        "python3", "/sessions/_runner.py", agent_uid, cursor_bin_path,
     ]
 
     try:
@@ -394,9 +396,10 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
 
 
 def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, Any]:
-    """Read output file for agent_uid."""
+    """Read output file for agent_uid. When output is empty and exit code is non-zero, append a hint about auth."""
     sessions_dir = _resolve(sessions_dir, get_default_sessions_dir)
     out_path = Path(sessions_dir) / f"{agent_uid}.txt"
+    exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
 
     if not out_path.exists():
         return {"status": "error", "error": f"No output file for agent_uid {agent_uid}", "agent_uid": agent_uid}
@@ -406,7 +409,50 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     except OSError as e:
         return {"status": "error", "error": str(e), "agent_uid": agent_uid}
 
+    # When no output was captured but the run failed, add a hint so the agent has something to report
+    if not text.strip() and exitcode_path.exists():
+        try:
+            code = int(exitcode_path.read_text().strip())
+            if code != 0:
+                text = (
+                    f"[No stdout/stderr captured. Exit code: {code}. "
+                    "Cursor CLI may not be authenticated on the host — ensure the host has valid auth in "
+                    "~/.cursor and ~/.config/cursor (mounted into the container). Or the subprocess exited before writing.]"
+                )
+        except (ValueError, OSError):
+            pass
+
     return {"status": "success", "agent_uid": agent_uid, "output": text}
+
+
+def run_stop(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Stop and remove the container for agent_uid."""
+    sessions_dir = _resolve(sessions_dir, get_default_sessions_dir)
+    container_name = f"{CONTAINER_PREFIX}{agent_uid}"
+
+    if not _docker_available():
+        return {"status": "error", "error": "Docker is not available on this host.", "agent_uid": agent_uid}
+
+    # docker stop then docker rm; rm -f so we remove even if already stopped
+    for docker_cmd, args in [
+        (["docker", "stop", "-t", "5", container_name], "stop"),
+        (["docker", "rm", "-f", container_name], "remove"),
+    ]:
+        try:
+            proc = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=15)
+            if proc.returncode != 0 and "No such container" not in (proc.stderr or ""):
+                err = (proc.stderr or proc.stdout or "").strip()
+                return {"status": "error", "error": err or f"docker {args} failed", "agent_uid": agent_uid}
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "error": f"docker {args} timed out", "agent_uid": agent_uid}
+        except Exception as e:
+            return {"status": "error", "error": str(e), "agent_uid": agent_uid}
+
+    return {
+        "status": "success",
+        "agent_uid": agent_uid,
+        "message": f"Container {container_name} stopped and removed.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +487,11 @@ def main() -> None:
     p_output.add_argument("--agent-uid", required=True, dest="agent_uid", help="Agent UID from start")
     p_output.add_argument("--sessions-dir", default=None, dest="sessions_dir", help="Sessions directory")
 
+    # stop
+    p_stop = subparsers.add_parser("stop", help="Stop and remove the container for an agent_uid")
+    p_stop.add_argument("--agent-uid", required=True, dest="agent_uid", help="Agent UID from start")
+    p_stop.add_argument("--sessions-dir", default=None, dest="sessions_dir", help="Sessions directory")
+
     args = parser.parse_args()
 
     if args.describe:
@@ -466,6 +517,8 @@ def main() -> None:
         result = run_status(agent_uid=args.agent_uid, sessions_dir=args.sessions_dir)
     elif args.command == "output":
         result = run_output(agent_uid=args.agent_uid, sessions_dir=args.sessions_dir)
+    elif args.command == "stop":
+        result = run_stop(agent_uid=args.agent_uid, sessions_dir=args.sessions_dir)
     else:
         result = {"status": "error", "error": f"Unknown command: {args.command}"}
 
