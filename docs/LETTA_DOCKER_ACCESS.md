@@ -52,7 +52,7 @@ Letta’s MCP server for SMCP is configured with a **command** and **args** (e.g
 
 **Update the MCP server** so Letta runs the wrapper instead of Python directly:
 
-- **Command:** full path to the wrapper, e.g. `/home/rizzn/sanctum/smcp/run-with-docker.sh`
+- **Command:** full path to the wrapper, e.g. `/home/<your-user>/sanctum/smcp/run-with-docker.sh`
 - **Args:** `[]` (empty)
 - **Env:** keep existing env (e.g. `MCP_PLUGINS_DIR`, `VENICE_API_KEY`) so the wrapper’s child process still gets them.
 
@@ -70,10 +70,10 @@ curl -s -X PATCH \
   -d '{
     "config": {
       "mcp_server_type": "stdio",
-      "command": "/home/rizzn/sanctum/smcp/run-with-docker.sh",
+      "command": "/home/<your-user>/sanctum/smcp/run-with-docker.sh",
       "args": [],
       "env": {
-        "MCP_PLUGINS_DIR": "/home/rizzn/sanctum/smcp/plugins",
+        "MCP_PLUGINS_DIR": "/home/<your-user>/sanctum/smcp/plugins",
         "VENICE_API_KEY": "your-venice-key-if-needed"
       }
     }
@@ -115,15 +115,15 @@ If the Cursor CLI is **not authenticated on the host**, agent runs can exit with
 
 ### Auth when SMCP runs as a different user
 
-If SMCP is invoked by Letta and runs as a **different user** than the one who ran `agent login` (e.g. Letta runs as `letta` but you logged in as `rizzn`), the plugin will mount that process user's `~/.cursor` and `~/.config/cursor` — which are empty. Set these in the env that the wrapper sources (e.g. in `env.letta`) so the container mounts the correct auth dirs:
+If SMCP is invoked by Letta and runs as a **different user** than the one who ran `agent login` (e.g. Letta runs as `letta` but you logged in as `alice`), the plugin will mount that process user's `~/.cursor` and `~/.config/cursor` — which are empty. Set these in the env that the wrapper sources (e.g. in `env.letta`) so the container mounts the correct auth dirs:
 
-- **`CURSOR_CONFIG_HOST_DIR`** — Host path to the **logged-in** user's `.cursor` dir (e.g. `/home/rizzn/.cursor`).
-- **`CURSOR_XDG_CONFIG_DIR`** — Host path to that user's `.config/cursor` (e.g. `/home/rizzn/.config/cursor`).
+- **`CURSOR_CONFIG_HOST_DIR`** — Host path to the **logged-in** user's `.cursor` dir (e.g. `/home/alice/.cursor`).
+- **`CURSOR_XDG_CONFIG_DIR`** — Host path to that user's `.config/cursor` (e.g. `/home/alice/.config/cursor`).
 
 Optional if the binary is only in that user's home:
 
-- **`CURSOR_CLI_HOST_PATH`** — Full path to the `agent` binary (e.g. `/home/rizzn/.local/bin/agent`).
-- **`CURSOR_AGENT_HOST_DIR`** — Path to that user's `.local/share/cursor-agent` (e.g. `/home/rizzn/.local/share/cursor-agent`).
+- **`CURSOR_CLI_HOST_PATH`** — Full path to the `agent` binary (e.g. `/home/alice/.local/bin/agent`).
+- **`CURSOR_AGENT_HOST_DIR`** — Path to that user's `.local/share/cursor-agent` (e.g. `/home/alice/.local/share/cursor-agent`).
 
 Then (re)start or reconnect the MCP server so the new process picks up the env; the next container run will have valid auth.
 
