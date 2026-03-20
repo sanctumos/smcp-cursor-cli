@@ -23,6 +23,7 @@ try:
         get_default_cursor_host_bin,
         get_default_cursor_xdg_config_dir,
         get_default_image,
+        get_default_model,
         get_default_sessions_dir,
         get_default_workspace,
         get_dockerfile_dir,
@@ -36,6 +37,7 @@ except ImportError:
         get_default_cursor_host_bin,
         get_default_cursor_xdg_config_dir,
         get_default_image,
+        get_default_model,
         get_default_sessions_dir,
         get_default_workspace,
         get_dockerfile_dir,
@@ -53,19 +55,40 @@ import pathlib, subprocess, sys
 
 uid = sys.argv[1]
 cmd = sys.argv[2] if len(sys.argv) > 2 else "agent"
+model = (sys.argv[3] if len(sys.argv) > 3 else "").strip()
 base = pathlib.Path("/sessions")
 
 prompt = (base / f"{uid}.prompt").read_text(encoding="utf-8")
 
-with open(base / f"{uid}.txt", "w", encoding="utf-8") as out:
-    proc = subprocess.run(
-        [cmd, "-p", prompt, "--output-format", "text", "--trust", "--sandbox", "disabled", "--yolo"],
-        stdin=subprocess.DEVNULL,
-        stdout=out,
-        stderr=subprocess.STDOUT,
-        cwd="/workspace",
-    )
+agent_argv = [cmd, "-p", prompt, "--output-format", "text", "--trust", "--sandbox", "disabled", "--yolo"]
+if model:
+    agent_argv.extend(["--model", model])
+# Force line-buffered stdout/stderr so output appears in the file as the agent prints (not only on exit).
+argv = ["stdbuf", "-oL", "-eL", "--"] + agent_argv
 
+out_path = base / f"{uid}.txt"
+# Create output file immediately so the host volume has it (avoids "no output file" when agent produces no stdout).
+out_path.write_text("", encoding="utf-8")
+
+# Run agent with stdout/stderr piped so we read and flush to file incrementally.
+proc = subprocess.Popen(
+    argv,
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    cwd="/workspace",
+    text=True,
+    bufsize=1,
+)
+
+def copy_stream(stream, path):
+    with open(path, "w", encoding="utf-8") as f:
+        for line in stream:
+            f.write(line)
+            f.flush()
+
+copy_stream(proc.stdout, out_path)
+proc.wait()
 (base / f"{uid}.exitcode").write_text(str(proc.returncode))
 sys.exit(proc.returncode)
 """
@@ -86,7 +109,7 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli_docker",
-            "version": "0.3.0",
+            "version": "0.3.2",
             "description": (
                 "Run Cursor CLI in non-interactive mode inside a Docker container. "
                 "Provides start, poll status, retrieve output — sandboxed variant "
@@ -121,6 +144,8 @@ def get_plugin_description() -> Dict[str, Any]:
                      "description": "Host directory for session files", "required": False, "default": None},
                     {"name": "image", "type": "string",
                      "description": "Docker image to use", "required": False, "default": None},
+                    {"name": "model", "type": "string",
+                     "description": "Cursor model ID for `agent --model` (e.g. composer-2). Default from CURSOR_CLI_MODEL or composer-2.", "required": False, "default": None},
                 ],
             },
             {
@@ -266,12 +291,14 @@ def run_start(
     cmd: Optional[str] = None,
     sessions_dir: Optional[str] = None,
     image: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Start agent inside a Docker container; return agent_uid."""
     sessions_dir = _resolve(sessions_dir, get_default_sessions_dir)
     cmd_name = _resolve(cmd, get_default_cmd)
     workspace = workspace if workspace else get_default_workspace()
     image = _resolve(image, get_default_image)
+    model_str = (model or get_default_model()).strip()
 
     if not _docker_available():
         return {"status": "error", "error": "Docker is not available on this host."}
@@ -316,7 +343,7 @@ def run_start(
         "--name", container_name,
         *volume_args,
         image,
-        "python3", "/sessions/_runner.py", agent_uid, cursor_bin_path,
+        "python3", "/sessions/_runner.py", agent_uid, cursor_bin_path, model_str or "",
     ]
 
     try:
@@ -335,7 +362,10 @@ def run_start(
         "status": "success",
         "agent_uid": agent_uid,
         "container": container_name,
-        "message": "Agent started in Docker container; use status and output with this agent_uid.",
+        "message": (
+            "Agent started in Docker container; use status and output with this agent_uid. "
+            "Pass the same sessions_dir to cursor_cli_docker__output when retrieving output."
+        ),
         "sessions_dir": sessions_dir,
     }
 
@@ -402,7 +432,17 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
 
     if not out_path.exists():
-        return {"status": "error", "error": f"No output file for agent_uid {agent_uid}", "agent_uid": agent_uid}
+        resolved_dir = str(Path(sessions_dir).resolve())
+        return {
+            "status": "error",
+            "error": (
+                f"No output file for agent_uid {agent_uid}. "
+                f"Looked in sessions_dir={resolved_dir}. "
+                "If you passed sessions_dir to start, pass the same sessions_dir to output."
+            ),
+            "agent_uid": agent_uid,
+            "sessions_dir": resolved_dir,
+        }
 
     try:
         text = out_path.read_text(encoding="utf-8", errors="replace")
@@ -476,6 +516,7 @@ def main() -> None:
     p_start.add_argument("--cmd", default=None, help="Cursor CLI command")
     p_start.add_argument("--sessions-dir", default=None, dest="sessions_dir", help="Sessions directory")
     p_start.add_argument("--image", default=None, help="Docker image")
+    p_start.add_argument("--model", default=None, help="Cursor model (e.g. composer-2)")
 
     # status
     p_status = subparsers.add_parser("status", help="Check run status")
@@ -512,6 +553,7 @@ def main() -> None:
             cmd=args.cmd,
             sessions_dir=args.sessions_dir,
             image=args.image,
+            model=args.model,
         )
     elif args.command == "status":
         result = run_status(agent_uid=args.agent_uid, sessions_dir=args.sessions_dir)

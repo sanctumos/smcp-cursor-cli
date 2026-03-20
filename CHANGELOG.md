@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.2] - 2026-03-20
+
+### Added
+
+- **cursor_cli_docker**: `model` tool argument and **`CURSOR_CLI_MODEL`** env; runner passes `--model` to the CLI when set.
+- **cursor_cli_docker**: Incremental session output — runner line-buffers and flushes so `cursor_cli_docker__output` can be polled while the agent is still running.
+
+### Changed
+
+- **cursor_cli_docker**: Default model when `CURSOR_CLI_MODEL` is unset is now **`composer-2`** instead of `auto` (avoids deprecated / risky `auto` for headless runs).
+- **cursor_cli_docker**: Clearer `output` error when `sessions_dir` does not match `start`.
+
+---
+
 ## [0.3.0] - 2026-03-09
 
 ### Fixed

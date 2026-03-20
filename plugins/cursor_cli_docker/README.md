@@ -74,7 +74,9 @@ Call `cursor_cli_docker__start` with a `prompt`. Poll with `cursor_cli_docker__s
    - The host's `~/.cursor` and `~/.config/cursor` mounted for auth (or `CURSOR_CONFIG_HOST_DIR` / `CURSOR_XDG_CONFIG_DIR` if set).
    - A small Python runner script (`_runner.py`) that reads the prompt file and runs the agent with `--trust --sandbox disabled --yolo` (unrestricted execution; the container is the sandbox).
 2. **`status`** runs `docker inspect` on the named container to check state and exit code.
-3. **`output`** reads `{sessions_dir}/{uid}.txt` from the host (shared volume).
+3. **`output`** reads `{sessions_dir}/{uid}.txt` from the host (shared volume). You can call it while the run is still in progress to get output so far (streaming).
+
+**Long-running runs (e.g. browser automation):** Output is written incrementally. The in-container runner pipes the agent’s stdout/stderr through a writer that flushes after each line, and uses `stdbuf -oL -eL` so the agent’s output is line-buffered. That way `cursor_cli_docker__output` shows progress during the run instead of only after the process exits.
 
 Each container is named `smcp_agent_{uid}` so multiple runs can coexist.
 
@@ -94,6 +96,7 @@ All settings come from environment variables or tool arguments. Tool arguments t
 | `CURSOR_AGENT_HOST_DIR` | *(auto-detect)* | Host path to cursor-agent data |
 | `CURSOR_CONFIG_HOST_DIR` | `~/.cursor` | Host path to cursor config (auth) |
 | `CURSOR_XDG_CONFIG_DIR` | `~/.config/cursor` | Host path to cursor XDG config (auth tokens) |
+| `CURSOR_CLI_MODEL` | `composer-2` | Cursor model ID passed as `--model` to the agent (default avoids deprecated `auto`). |
 
 ---
 

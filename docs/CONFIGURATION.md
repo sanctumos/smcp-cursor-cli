@@ -14,6 +14,16 @@ All configurable values can be supplied either as **tool arguments** (from the a
 
 These are read by the plugin when the corresponding tool argument is not provided.
 
+### `cursor_cli_docker` (Docker sandbox)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CURSOR_CLI_MODEL` | `composer-2` | Passed to `agent --model`. Override per tool call with the `model` argument. |
+| `CURSOR_CLI_SESSIONS_DIR` | `~/.cursor/smcp-docker-sessions` | Host directory for session files (mounted at `/sessions` in the container). |
+| `CURSOR_DOCKER_IMAGE` | `smcp-cursor-sandbox` | Image tag for `cursor_cli_docker__build` / `__start`. |
+
+See also [plugins/cursor_cli_docker/README.md](../plugins/cursor_cli_docker/README.md).
+
 ---
 
 ## Tool arguments

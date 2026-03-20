@@ -24,6 +24,11 @@ def get_default_cmd() -> str:
     return os.environ.get("CURSOR_CLI_CMD", "agent")
 
 
+def get_default_model() -> str:
+    """Model for Cursor CLI. Default composer-2 (avoids deprecated `auto` / surprise premium use)."""
+    return os.environ.get("CURSOR_CLI_MODEL", "composer-2")
+
+
 def get_default_workspace():
     return os.environ.get("CURSOR_CLI_WORKSPACE", None)
 

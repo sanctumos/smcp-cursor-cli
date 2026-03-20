@@ -55,9 +55,13 @@ Common issues and how to fix them.
 
 **Checks:**
 
-1. **agent_uid**: Use the same `agent_uid` returned from `cursor_cli__start`.
-2. **sessions_dir**: Use the same `sessions_dir` as for `start` (or rely on the same default). If SMCP runs in a different environment (e.g. different user or container), the default `~/.cursor/smcp-sessions` may point to different directories for start vs. status/output.
-3. **Timing**: The output file is created when `start` runs. If `start` failed (e.g. command not found), the file may never be created. Check the `start` result for `status: "error"`.
+1. **agent_uid**: Use the same `agent_uid` returned from `cursor_cli__start` (or `cursor_cli_docker__start`).
+2. **sessions_dir**: Use the same `sessions_dir` as for `start` (or rely on the same default). If SMCP runs in a different environment (e.g. different user or container), the default may point to different directories for start vs. output.
+   - **cursor_cli** default: `~/.cursor/smcp-sessions`
+   - **cursor_cli_docker** default: `~/.cursor/smcp-docker-sessions`
+   Always pass the `sessions_dir` returned by `start` into `output` so both use the same path.
+3. **Timing**: The output file is created when the run starts. If `start` failed (e.g. command not found, Docker image missing), the file may never be created. Check the `start` result for `status: "error"`.
+4. **cursor_cli_docker**: The in-container runner creates the output file at the start of the run. If you still see "No output file", the error message includes the path that was checked; ensure that matches the `sessions_dir` from `start`.
 
 ---
 
