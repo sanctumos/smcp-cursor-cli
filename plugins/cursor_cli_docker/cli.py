@@ -53,7 +53,7 @@ MAX_STATUS_OUTPUT_CHARS = 120_000
 def _enrich_output_when_empty(
     sessions_dir: str, agent_uid: str, text: str
 ) -> str:
-    """If output is blank and exit code is non-zero, substitute auth/debug hint."""
+    """If output is blank and exit code is non-zero, add a calm diagnostic note."""
     if text.strip():
         return text
     exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
@@ -63,9 +63,12 @@ def _enrich_output_when_empty(
         code = -1
     if code != 0:
         return (
-            f"[No stdout/stderr captured. Exit code: {code}. "
-            "Cursor CLI may not be authenticated on the host — ensure the host has valid auth in "
-            "~/.cursor and ~/.config/cursor (mounted into the container). Or the subprocess exited before writing.]"
+            f"Run finished with no log output (exit code {code}).\n\n"
+            "That often means one of:\n"
+            "  • Cursor is not signed in on the host user that runs SMCP — the container uses that "
+            "user’s ~/.cursor and ~/.config/cursor. Running `agent login` once as that user usually fixes it.\n"
+            "  • The CLI exited before it printed anything (immediate crash or misconfiguration).\n"
+            "  • The connection to Cursor’s service dropped — worth retrying; check outbound HTTPS from this host.\n"
         )
     return text
 
@@ -73,9 +76,11 @@ def _enrich_output_when_empty(
 def _truncate_status_output(text: str) -> str:
     if len(text) <= MAX_STATUS_OUTPUT_CHARS:
         return text
+    total = len(text)
     return (
         text[:MAX_STATUS_OUTPUT_CHARS]
-        + f"\n\n[... truncated for status payload; use cursor_cli_docker__output for full text ({len(text)} chars).]"
+        + f"\n\n— Output continues past this point ({total} characters total). "
+        "Use cursor_cli_docker__output with the same agent_uid and sessions_dir for the full log."
     )
 
 
@@ -86,14 +91,14 @@ def _output_snapshot_for_failed_run(
     out_path = Path(sessions_dir) / f"{agent_uid}.txt"
     if not out_path.exists():
         return (
-            f"[No output file yet for this run (exit_code={exit_code}). "
-            "If the container crashed before the runner created the file, check docker logs for "
-            f"container smcp_agent_{agent_uid}.]"
+            f"No session log file was found (exit code {exit_code}). "
+            "The container may have stopped before the runner could write logs.\n\n"
+            f"If the container still exists, `docker logs smcp_agent_{agent_uid}` may show what happened."
         )
     try:
         raw = out_path.read_text(encoding="utf-8", errors="replace")
     except OSError as e:
-        return f"[Could not read output file: {e}]"
+        return f"Could not read the session log: {e}"
     merged = _enrich_output_when_empty(sessions_dir, agent_uid, raw)
     return _truncate_status_output(merged)
 
@@ -161,11 +166,10 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli_docker",
-            "version": "0.3.3",
+            "version": "0.3.4",
             "description": (
-                "Run Cursor CLI in non-interactive mode inside a Docker container. "
-                "Provides start, poll status, retrieve output — sandboxed variant "
-                "for Sanctum Tasks heartbeat."
+                "Runs the Cursor CLI headlessly inside an isolated Docker container so the host stays untouched. "
+                "Start a run, poll status, read output — suited to automated and heartbeat workflows."
             ),
         },
         "commands": [
@@ -182,8 +186,8 @@ def get_plugin_description() -> Dict[str, Any]:
             {
                 "name": "start",
                 "description": (
-                    "Start a Cursor CLI agent run inside a Docker container. "
-                    "Returns agent_uid for status/output polling."
+                    "Start a Cursor CLI run inside the sandbox container. "
+                    "Returns agent_uid to poll status and read output."
                 ),
                 "parameters": [
                     {"name": "prompt", "type": "string",
@@ -203,9 +207,9 @@ def get_plugin_description() -> Dict[str, Any]:
             {
                 "name": "status",
                 "description": (
-                    "Check whether the containerised agent run is still running or completed. "
-                    "If the run failed, the response includes an `output` field with the Cursor CLI "
-                    "log (same as __output, possibly truncated) so you see errors without a second tool call."
+                    "Poll whether the run is still going or finished. "
+                    "If it failed, the same response includes an `output` field with the CLI log "
+                    "(trimmed if very long) so the reason is visible immediately."
                 ),
                 "parameters": [
                     {"name": "agent_uid", "type": "string",
@@ -216,7 +220,7 @@ def get_plugin_description() -> Dict[str, Any]:
             },
             {
                 "name": "output",
-                "description": "Read the output of a completed or in-progress containerised agent run.",
+                "description": "Read the full session log for a completed or in-progress run (use after status, or for long logs).",
                 "parameters": [
                     {"name": "agent_uid", "type": "string",
                      "description": "Agent UID returned from start", "required": True, "default": None},
@@ -226,7 +230,7 @@ def get_plugin_description() -> Dict[str, Any]:
             },
             {
                 "name": "stop",
-                "description": "Stop and remove a running container for the given agent_uid. Use to terminate a run or clean up.",
+                "description": "Stop a run early or remove its container after it finishes.",
                 "parameters": [
                     {"name": "agent_uid", "type": "string",
                      "description": "Agent UID returned from start", "required": True, "default": None},
@@ -333,8 +337,11 @@ def run_build(image: Optional[str] = None, no_cache: bool = False) -> Dict[str, 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if proc.returncode == 0:
-            return {"status": "success", "image": image, "message": "Image built successfully."}
-        return {"status": "error", "error": proc.stderr[-2000:] if proc.stderr else f"Build exited {proc.returncode}"}
+            return {"status": "success", "image": image, "message": "Sandbox image built successfully."}
+        return {
+            "status": "error",
+            "error": proc.stderr[-2000:] if proc.stderr else f"Image build did not succeed (exit {proc.returncode}).",
+        }
     except subprocess.TimeoutExpired:
         return {"status": "error", "error": "Docker build timed out (600s)."}
     except Exception as e:
@@ -406,7 +413,7 @@ def run_start(
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
         if proc.returncode != 0:
             err = proc.stderr.strip() or proc.stdout.strip()
-            return {"status": "error", "error": f"docker run failed: {err}", "agent_uid": agent_uid}
+            return {"status": "error", "error": f"Docker could not start the container: {err}", "agent_uid": agent_uid}
     except Exception as e:
         return {"status": "error", "error": str(e), "agent_uid": agent_uid}
 
@@ -419,8 +426,8 @@ def run_start(
         "agent_uid": agent_uid,
         "container": container_name,
         "message": (
-            "Agent started in Docker container; use status and output with this agent_uid. "
-            "Pass the same sessions_dir to cursor_cli_docker__output when retrieving output."
+            "Run started in the sandbox container. Poll status with this agent_uid; "
+            "when the run ends, failed status responses include the CLI log, or use the output tool anytime."
         ),
         "sessions_dir": sessions_dir,
     }
@@ -462,7 +469,10 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
             "status": "success",
             "agent_uid": agent_uid,
             "run_status": "failed",
-            "message": "Container not found and no exit code recorded.",
+            "message": (
+                "The container is gone and no exit code was saved — often a sessions_dir mismatch "
+                "or the container was removed manually."
+            ),
             "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
         }
 
@@ -471,7 +481,12 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     docker_exit = int(parts[1]) if len(parts) > 1 else -1
 
     if docker_state == "running":
-        return {"status": "success", "agent_uid": agent_uid, "run_status": "running", "message": "Agent container is running."}
+        return {
+            "status": "success",
+            "agent_uid": agent_uid,
+            "run_status": "running",
+            "message": "Still running inside the container.",
+        }
 
     if docker_state == "exited":
         # Prefer the exitcode file written by the runner (reflects agent exit, not container init)
@@ -498,7 +513,7 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         "status": "success",
         "agent_uid": agent_uid,
         "run_status": "failed",
-        "message": f"Container state: {docker_state}",
+        "message": f"Unexpected container state: {docker_state}.",
         "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, docker_exit),
     }
 
@@ -513,9 +528,9 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         return {
             "status": "error",
             "error": (
-                f"No output file for agent_uid {agent_uid}. "
-                f"Looked in sessions_dir={resolved_dir}. "
-                "If you passed sessions_dir to start, pass the same sessions_dir to output."
+                f"No session log for this agent_uid yet. "
+                f"Sessions directory: {resolved_dir}. "
+                "Use the same sessions_dir you passed to start (if any)."
             ),
             "agent_uid": agent_uid,
             "sessions_dir": resolved_dir,
@@ -557,7 +572,7 @@ def run_stop(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, An
     return {
         "status": "success",
         "agent_uid": agent_uid,
-        "message": f"Container {container_name} stopped and removed.",
+        "message": f"Run stopped; container {container_name} removed.",
     }
 
 

@@ -34,9 +34,11 @@ def _enrich_output_when_empty(sessions_dir: str, agent_uid: str, text: str) -> s
         code = -1
     if code != 0:
         return (
-            f"[No stdout/stderr captured. Exit code: {code}. "
-            "Cursor CLI may not be authenticated — ensure valid auth in ~/.cursor and ~/.config/cursor "
-            "for the user running SMCP. Or the process exited before writing.]"
+            f"Run finished with no log output (exit code {code}).\n\n"
+            "That often means one of:\n"
+            "  • Cursor CLI is not signed in for the user that runs SMCP — check ~/.cursor and ~/.config/cursor.\n"
+            "  • The CLI exited before it printed anything (immediate crash or misconfiguration).\n"
+            "  • The connection to Cursor’s service dropped — worth retrying; check outbound HTTPS from this host.\n"
         )
     return text
 
@@ -44,9 +46,11 @@ def _enrich_output_when_empty(sessions_dir: str, agent_uid: str, text: str) -> s
 def _truncate_status_output(text: str) -> str:
     if len(text) <= MAX_STATUS_OUTPUT_CHARS:
         return text
+    total = len(text)
     return (
         text[:MAX_STATUS_OUTPUT_CHARS]
-        + f"\n\n[... truncated for status payload; use cursor_cli__output for full text ({len(text)} chars).]"
+        + f"\n\n— Output continues past this point ({total} characters total). "
+        "Use cursor_cli__output with the same agent_uid and sessions_dir for the full log."
     )
 
 
@@ -54,13 +58,13 @@ def _output_snapshot_for_failed_run(sessions_dir: str, agent_uid: str, exit_code
     out_path = Path(sessions_dir) / f"{agent_uid}.txt"
     if not out_path.exists():
         return (
-            f"[No output file for this run (exit_code={exit_code}). "
-            "The agent process may have failed before creating the session file.]"
+            f"No session log file was found (exit code {exit_code}). "
+            "The Cursor process may have ended before it wrote output."
         )
     try:
         raw = out_path.read_text(encoding="utf-8", errors="replace")
     except OSError as e:
-        return f"[Could not read output file: {e}]"
+        return f"Could not read the session log: {e}"
     merged = _enrich_output_when_empty(sessions_dir, agent_uid, raw)
     return _truncate_status_output(merged)
 
@@ -70,13 +74,16 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli",
-            "version": "0.1.1",
-            "description": "Run Cursor CLI in non-interactive mode; start, poll status, retrieve output. For Sanctum Tasks heartbeat.",
+            "version": "0.1.2",
+            "description": (
+                "Runs the Cursor CLI headlessly on the host: start a run, poll status, read output. "
+                "Suited to automated and heartbeat workflows."
+            ),
         },
         "commands": [
             {
                 "name": "start",
-                "description": "Start a Cursor CLI agent run with the given prompt. Returns agent_uid for status/output polling.",
+                "description": "Start a Cursor CLI run with the given prompt. Returns agent_uid to poll status and read output.",
                 "parameters": [
                     {"name": "prompt", "type": "string", "description": "Task prompt for the agent", "required": True, "default": None},
                     {"name": "workspace", "type": "string", "description": "Working directory for the agent (optional)", "required": False, "default": None},
@@ -87,9 +94,9 @@ def get_plugin_description() -> Dict[str, Any]:
             {
                 "name": "status",
                 "description": (
-                    "Check whether the agent run is still running or completed. "
-                    "If the run failed, the response includes an `output` field with the Cursor CLI log "
-                    "(same as __output, possibly truncated) so errors are visible without a second tool call."
+                    "Poll whether the run is still going or finished. "
+                    "If it failed, the same response includes an `output` field with the CLI log "
+                    "(trimmed if very long) so the reason is visible immediately."
                 ),
                 "parameters": [
                     {"name": "agent_uid", "type": "string", "description": "Agent UID returned from start", "required": True, "default": None},
@@ -98,7 +105,7 @@ def get_plugin_description() -> Dict[str, Any]:
             },
             {
                 "name": "output",
-                "description": "Read the output of a completed or in-progress agent run.",
+                "description": "Read the full session log for a completed or in-progress run (use after status, or for long logs).",
                 "parameters": [
                     {"name": "agent_uid", "type": "string", "description": "Agent UID returned from start", "required": True, "default": None},
                     {"name": "sessions_dir", "type": "string", "description": "Sessions directory (optional)", "required": False, "default": None},
@@ -167,14 +174,21 @@ def run_start(
         t = threading.Thread(target=write_exitcode_when_done, args=(proc, exitcode_path), daemon=True)
         t.start()
     except FileNotFoundError:
-        return {"status": "error", "error": f"Cursor CLI command not found: {cmd_name}", "agent_uid": agent_uid}
+        return {
+            "status": "error",
+            "error": (
+                f"The Cursor CLI was not found as `{cmd_name}`. "
+                "Install it on the PATH or set CURSOR_CLI_CMD to the full path."
+            ),
+            "agent_uid": agent_uid,
+        }
     except Exception as e:
         return {"status": "error", "error": str(e), "agent_uid": agent_uid}
 
     return {
         "status": "success",
         "agent_uid": agent_uid,
-        "message": "Agent started; use status and output with this agent_uid.",
+        "message": "Run started. Poll status with this agent_uid; full log is available when the process exits.",
         "sessions_dir": sessions_dir,
     }
 
@@ -191,7 +205,10 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
             "status": "success",
             "agent_uid": agent_uid,
             "run_status": "failed",
-            "message": "No PID file; run may not have started.",
+            "message": (
+                "No run record for this agent_uid (missing PID file). "
+                "The run may not have started, or sessions_dir does not match start."
+            ),
             "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
         }
 
@@ -202,14 +219,14 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
             "status": "success",
             "agent_uid": agent_uid,
             "run_status": "failed",
-            "message": "Invalid or unreadable PID file.",
+            "message": "Could not read the saved process id for this run.",
             "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
         }
 
     # Check if process exists (Unix)
     try:
         os.kill(pid, 0)
-        return {"status": "success", "agent_uid": agent_uid, "run_status": "running", "message": "Agent is still running."}
+        return {"status": "success", "agent_uid": agent_uid, "run_status": "running", "message": "Still running."}
     except OSError:
         pass  # process gone
 
@@ -233,7 +250,7 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         "status": "success",
         "agent_uid": agent_uid,
         "run_status": "completed",
-        "message": "Process ended (exit code unknown).",
+        "message": "The process has stopped; exit code was not recorded.",
         "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
     }
 
@@ -245,7 +262,15 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     out_path = base / f"{agent_uid}.txt"
 
     if not out_path.exists():
-        return {"status": "error", "error": f"No output file for agent_uid {agent_uid}", "agent_uid": agent_uid}
+        return {
+            "status": "error",
+            "error": (
+                f"No session log for this agent_uid yet. "
+                f"Sessions directory: {sessions_dir}. "
+                "Use the same sessions_dir you passed to start (if any)."
+            ),
+            "agent_uid": agent_uid,
+        }
 
     try:
         text = out_path.read_text(encoding="utf-8", errors="replace")
