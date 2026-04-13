@@ -46,6 +46,58 @@ except ImportError:
 
 CONTAINER_PREFIX = "smcp_agent_"
 
+# Cap output embedded in status responses (full text still available via __output).
+MAX_STATUS_OUTPUT_CHARS = 120_000
+
+
+def _enrich_output_when_empty(
+    sessions_dir: str, agent_uid: str, text: str
+) -> str:
+    """If output is blank and exit code is non-zero, substitute auth/debug hint."""
+    if text.strip():
+        return text
+    exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
+    try:
+        code = int(exitcode_path.read_text().strip()) if exitcode_path.exists() else 0
+    except (ValueError, OSError):
+        code = -1
+    if code != 0:
+        return (
+            f"[No stdout/stderr captured. Exit code: {code}. "
+            "Cursor CLI may not be authenticated on the host — ensure the host has valid auth in "
+            "~/.cursor and ~/.config/cursor (mounted into the container). Or the subprocess exited before writing.]"
+        )
+    return text
+
+
+def _truncate_status_output(text: str) -> str:
+    if len(text) <= MAX_STATUS_OUTPUT_CHARS:
+        return text
+    return (
+        text[:MAX_STATUS_OUTPUT_CHARS]
+        + f"\n\n[... truncated for status payload; use cursor_cli_docker__output for full text ({len(text)} chars).]"
+    )
+
+
+def _output_snapshot_for_failed_run(
+    sessions_dir: str, agent_uid: str, exit_code: int
+) -> str:
+    """Load session .txt for inclusion in status when a run failed."""
+    out_path = Path(sessions_dir) / f"{agent_uid}.txt"
+    if not out_path.exists():
+        return (
+            f"[No output file yet for this run (exit_code={exit_code}). "
+            "If the container crashed before the runner created the file, check docker logs for "
+            f"container smcp_agent_{agent_uid}.]"
+        )
+    try:
+        raw = out_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return f"[Could not read output file: {e}]"
+    merged = _enrich_output_when_empty(sessions_dir, agent_uid, raw)
+    return _truncate_status_output(merged)
+
+
 # ---------------------------------------------------------------------------
 # Runner script — written to sessions dir, executed inside the container.
 # Avoids all shell-escaping hazards by reading the prompt from a file.
@@ -109,7 +161,7 @@ def get_plugin_description() -> Dict[str, Any]:
     return {
         "plugin": {
             "name": "cursor_cli_docker",
-            "version": "0.3.2",
+            "version": "0.3.3",
             "description": (
                 "Run Cursor CLI in non-interactive mode inside a Docker container. "
                 "Provides start, poll status, retrieve output — sandboxed variant "
@@ -150,7 +202,11 @@ def get_plugin_description() -> Dict[str, Any]:
             },
             {
                 "name": "status",
-                "description": "Check whether the containerised agent run is still running or completed.",
+                "description": (
+                    "Check whether the containerised agent run is still running or completed. "
+                    "If the run failed, the response includes an `output` field with the Cursor CLI "
+                    "log (same as __output, possibly truncated) so you see errors without a second tool call."
+                ),
                 "parameters": [
                     {"name": "agent_uid", "type": "string",
                      "description": "Agent UID returned from start", "required": True, "default": None},
@@ -391,12 +447,23 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
             try:
                 code = int(exitcode_path.read_text().strip())
                 run_status = "completed" if code == 0 else "failed"
-                return {"status": "success", "agent_uid": agent_uid, "run_status": run_status, "exit_code": code}
+                out: Dict[str, Any] = {
+                    "status": "success",
+                    "agent_uid": agent_uid,
+                    "run_status": run_status,
+                    "exit_code": code,
+                }
+                if run_status == "failed":
+                    out["output"] = _output_snapshot_for_failed_run(sessions_dir, agent_uid, code)
+                return out
             except (ValueError, OSError):
                 pass
         return {
-            "status": "success", "agent_uid": agent_uid,
-            "run_status": "failed", "message": "Container not found and no exit code recorded.",
+            "status": "success",
+            "agent_uid": agent_uid,
+            "run_status": "failed",
+            "message": "Container not found and no exit code recorded.",
+            "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
         }
 
     parts = proc.stdout.strip().split(":")
@@ -417,11 +484,22 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         else:
             code = docker_exit
         run_status = "completed" if code == 0 else "failed"
-        return {"status": "success", "agent_uid": agent_uid, "run_status": run_status, "exit_code": code}
+        out: Dict[str, Any] = {
+            "status": "success",
+            "agent_uid": agent_uid,
+            "run_status": run_status,
+            "exit_code": code,
+        }
+        if run_status == "failed":
+            out["output"] = _output_snapshot_for_failed_run(sessions_dir, agent_uid, code)
+        return out
 
     return {
-        "status": "success", "agent_uid": agent_uid,
-        "run_status": "failed", "message": f"Container state: {docker_state}",
+        "status": "success",
+        "agent_uid": agent_uid,
+        "run_status": "failed",
+        "message": f"Container state: {docker_state}",
+        "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, docker_exit),
     }
 
 
@@ -429,7 +507,6 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     """Read output file for agent_uid. When output is empty and exit code is non-zero, append a hint about auth."""
     sessions_dir = _resolve(sessions_dir, get_default_sessions_dir)
     out_path = Path(sessions_dir) / f"{agent_uid}.txt"
-    exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
 
     if not out_path.exists():
         resolved_dir = str(Path(sessions_dir).resolve())
@@ -449,18 +526,7 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     except OSError as e:
         return {"status": "error", "error": str(e), "agent_uid": agent_uid}
 
-    # When no output was captured but the run failed, add a hint so the agent has something to report
-    if not text.strip() and exitcode_path.exists():
-        try:
-            code = int(exitcode_path.read_text().strip())
-            if code != 0:
-                text = (
-                    f"[No stdout/stderr captured. Exit code: {code}. "
-                    "Cursor CLI may not be authenticated on the host — ensure the host has valid auth in "
-                    "~/.cursor and ~/.config/cursor (mounted into the container). Or the subprocess exited before writing.]"
-                )
-        except (ValueError, OSError):
-            pass
+    text = _enrich_output_when_empty(sessions_dir, agent_uid, text)
 
     return {"status": "success", "agent_uid": agent_uid, "output": text}
 

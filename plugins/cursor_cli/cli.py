@@ -21,13 +21,56 @@ try:
 except ImportError:
     from _overrides import get_default_cmd, get_default_workspace, get_default_sessions_dir
 
+MAX_STATUS_OUTPUT_CHARS = 120_000
+
+
+def _enrich_output_when_empty(sessions_dir: str, agent_uid: str, text: str) -> str:
+    if text.strip():
+        return text
+    exitcode_path = Path(sessions_dir) / f"{agent_uid}.exitcode"
+    try:
+        code = int(exitcode_path.read_text().strip()) if exitcode_path.exists() else 0
+    except (ValueError, OSError):
+        code = -1
+    if code != 0:
+        return (
+            f"[No stdout/stderr captured. Exit code: {code}. "
+            "Cursor CLI may not be authenticated — ensure valid auth in ~/.cursor and ~/.config/cursor "
+            "for the user running SMCP. Or the process exited before writing.]"
+        )
+    return text
+
+
+def _truncate_status_output(text: str) -> str:
+    if len(text) <= MAX_STATUS_OUTPUT_CHARS:
+        return text
+    return (
+        text[:MAX_STATUS_OUTPUT_CHARS]
+        + f"\n\n[... truncated for status payload; use cursor_cli__output for full text ({len(text)} chars).]"
+    )
+
+
+def _output_snapshot_for_failed_run(sessions_dir: str, agent_uid: str, exit_code: int) -> str:
+    out_path = Path(sessions_dir) / f"{agent_uid}.txt"
+    if not out_path.exists():
+        return (
+            f"[No output file for this run (exit_code={exit_code}). "
+            "The agent process may have failed before creating the session file.]"
+        )
+    try:
+        raw = out_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return f"[Could not read output file: {e}]"
+    merged = _enrich_output_when_empty(sessions_dir, agent_uid, raw)
+    return _truncate_status_output(merged)
+
 
 def get_plugin_description() -> Dict[str, Any]:
     """Return structured plugin description for SMCP --describe."""
     return {
         "plugin": {
             "name": "cursor_cli",
-            "version": "0.1.0",
+            "version": "0.1.1",
             "description": "Run Cursor CLI in non-interactive mode; start, poll status, retrieve output. For Sanctum Tasks heartbeat.",
         },
         "commands": [
@@ -43,7 +86,11 @@ def get_plugin_description() -> Dict[str, Any]:
             },
             {
                 "name": "status",
-                "description": "Check whether the agent run is still running or completed.",
+                "description": (
+                    "Check whether the agent run is still running or completed. "
+                    "If the run failed, the response includes an `output` field with the Cursor CLI log "
+                    "(same as __output, possibly truncated) so errors are visible without a second tool call."
+                ),
                 "parameters": [
                     {"name": "agent_uid", "type": "string", "description": "Agent UID returned from start", "required": True, "default": None},
                     {"name": "sessions_dir", "type": "string", "description": "Sessions directory (optional)", "required": False, "default": None},
@@ -140,12 +187,24 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
     exitcode_path = base / f"{agent_uid}.exitcode"
 
     if not pid_path.exists():
-        return {"status": "success", "agent_uid": agent_uid, "run_status": "failed", "message": "No PID file; run may not have started."}
+        return {
+            "status": "success",
+            "agent_uid": agent_uid,
+            "run_status": "failed",
+            "message": "No PID file; run may not have started.",
+            "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
+        }
 
     try:
         pid = int(pid_path.read_text().strip())
     except (ValueError, OSError):
-        return {"status": "success", "agent_uid": agent_uid, "run_status": "failed", "message": "Invalid or unreadable PID file."}
+        return {
+            "status": "success",
+            "agent_uid": agent_uid,
+            "run_status": "failed",
+            "message": "Invalid or unreadable PID file.",
+            "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
+        }
 
     # Check if process exists (Unix)
     try:
@@ -158,11 +217,25 @@ def run_status(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         try:
             code = int(exitcode_path.read_text().strip())
             run_status = "completed" if code == 0 else "failed"
-            return {"status": "success", "agent_uid": agent_uid, "run_status": run_status, "exit_code": code}
+            row: Dict[str, Any] = {
+                "status": "success",
+                "agent_uid": agent_uid,
+                "run_status": run_status,
+                "exit_code": code,
+            }
+            if run_status == "failed":
+                row["output"] = _output_snapshot_for_failed_run(sessions_dir, agent_uid, code)
+            return row
         except (ValueError, OSError):
             pass
 
-    return {"status": "success", "agent_uid": agent_uid, "run_status": "completed", "message": "Process ended (exit code unknown)."}
+    return {
+        "status": "success",
+        "agent_uid": agent_uid,
+        "run_status": "completed",
+        "message": "Process ended (exit code unknown).",
+        "output": _output_snapshot_for_failed_run(sessions_dir, agent_uid, -1),
+    }
 
 
 def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, Any]:
@@ -178,6 +251,8 @@ def run_output(agent_uid: str, sessions_dir: Optional[str] = None) -> Dict[str, 
         text = out_path.read_text(encoding="utf-8", errors="replace")
     except OSError as e:
         return {"status": "error", "error": str(e), "agent_uid": agent_uid}
+
+    text = _enrich_output_when_empty(sessions_dir, agent_uid, text)
 
     return {"status": "success", "agent_uid": agent_uid, "output": text}
 
