@@ -72,6 +72,7 @@ def _output_snapshot_for_failed_run(sessions_dir: str, agent_uid: str, exit_code
 def get_plugin_description() -> Dict[str, Any]:
     """Return structured plugin description for SMCP --describe."""
     return {
+        "contract_version": "1.0",
         "plugin": {
             "name": "cursor_cli",
             "version": "0.1.2",

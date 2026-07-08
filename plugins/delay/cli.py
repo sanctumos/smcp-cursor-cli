@@ -17,6 +17,7 @@ MAX_DELAY_SECONDS = 3600  # 1 hour cap
 
 def get_plugin_description() -> Dict[str, Any]:
     return {
+        "contract_version": "1.0",
         "plugin": {
             "name": "delay",
             "version": "0.1.0",

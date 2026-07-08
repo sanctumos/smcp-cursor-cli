@@ -164,6 +164,7 @@ def _ensure_runner(sessions_dir: str) -> Path:
 
 def get_plugin_description() -> Dict[str, Any]:
     return {
+        "contract_version": "1.0",
         "plugin": {
             "name": "cursor_cli_docker",
             "version": "0.3.4",
